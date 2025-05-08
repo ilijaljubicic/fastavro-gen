@@ -81,6 +81,15 @@
                 {"type": "map","values": "Weather"},
                 "null"
             ] 
-        }
+        },
+        {
+          "name": "tempdec",
+          "type": {
+            "type": "bytes",
+            "logicalType": "decimal",
+            "precision": 10,
+            "scale": 2
+          }
+        }        
     ]
 }

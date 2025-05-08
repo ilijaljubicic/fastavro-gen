@@ -7,7 +7,7 @@ import shutil
 import subprocess
 from copy import deepcopy
 from fastavro_gen.models import OutputType, SimpleField, Record, AvroEnum, Collector
-
+from fastavro_gen.logical_types import LOGICAL_TYPE_MAP
 
 PRIMITIVE_TO_TYPE: Dict[str, str] = {
     "string": "str",
@@ -39,22 +39,80 @@ def _remove_prefix(name: str, namespace_prefix: str):
     return name
 
 
+
 def _write_imports(
     data: StringIO,
     collector: Collector,
 ) -> None:
-    """Extra should contain full import statements"""
+    """Generate import statements for typing, dataclasses, and schemas."""
     data.seek(0)
-    if collector.typing:
-        data.write(f"from typing import {', '.join(sorted(list(collector.typing)))}\n")
+
+    # Derive a map of Python type → module from LOGICAL_TYPE_MAP
+    # LOGICAL_TYPE_MAP: dict[logicalType, (typename, module, parse_expr)]
+    special_map = {
+        typename: module
+        for _, (typename, module, _parse) in LOGICAL_TYPE_MAP.items()
+    }
+
+    # 0) collect imports by module, defaulting to 'typing'
+    imports_by_module: dict[str, set[str]] = {}
+    for typ in sorted(collector.typing):
+        module = special_map.get(typ, "typing")
+        imports_by_module.setdefault(module, set()).add(typ)
+
+
+    # 1) one import-per-module
+    for module, types in sorted(imports_by_module.items()):
+        names = ", ".join(sorted(types))
+        data.write(f"from {module} import {names}\n")
+
+    # 2) dataclasses
     if collector.dataclass:
-        data.write(
-            f"from dataclasses import {', '.join(sorted(list(collector.dataclass)))}\n"
-        )
+        dnames = ", ".join(sorted(collector.dataclass))
+        data.write(f"from dataclasses import {dnames}\n")
+
+    # 3) schemas
     for schema in collector.schemas:
         path, fname = _name_to_filepath(schema, joiner=".")
         schema_name = schema.split(".")[-1]
         data.write(f"from {path}.{fname[:-3]} import {schema_name}\n")
+
+    # 4) consolidated typing imports (minus Decimal)
+    typing_only = sorted(set(collector.typing) - {"Decimal"})
+    if typing_only:
+        data.write(f"from typing import {', '.join(typing_only)}\n")
+        
+        
+def _parse_type(
+    _type: Union[str, list, dict],
+    collector: Collector,
+    namespace_prefix: str = "",
+) -> str:
+    # Union types
+    if isinstance(_type, list):
+        if len(_type) == 1:
+            return _parse_type(_type[0], collector, namespace_prefix=namespace_prefix)
+        if len(_type) == 2 and "null" in _type:
+            _other = [i for i in _type if i != "null"]
+            collector.typing.add("Optional")
+            return f"Optional[{_parse_type(_other[0], collector, namespace_prefix=namespace_prefix)}]"
+
+        else:
+            collector.typing.add("Union")
+            return f"Union[{', '.join([_parse_type(t, collector, namespace_prefix=namespace_prefix) for t in _type])}]"
+    # Map, enum, record, array
+    elif isinstance(_type, dict):
+        return _parse_dict_type(_type, collector, namespace_prefix=namespace_prefix)
+    # String
+    elif _type in PRIMITIVE_TO_TYPE:
+        return PRIMITIVE_TO_TYPE[_type]
+    # String, but a named schema
+    elif isinstance(_type, str) and "." in _type:
+        collector.schemas.add(_remove_prefix(_type, namespace_prefix))
+        return _type.split(".")[-1]
+    else:
+        raise Exception(f"Failed parsing type of {_type}")
+
 
 
 def _parse_type(
@@ -88,13 +146,20 @@ def _parse_type(
         raise Exception(f"Failed parsing type of {_type}")
 
 
+
 def _parse_dict_type(
     _type: dict,
     collector: Collector,
     *,
     namespace_prefix: str = "",
 ) -> str:
-    if _type["type"] == "enum":
+    lt = _type.get("logicalType")
+    if _type["type"] == "bytes" and lt in LOGICAL_TYPE_MAP:
+        name, _, _ = LOGICAL_TYPE_MAP[lt]
+        collector.typing.add(name)
+        return name
+        
+    elif _type["type"] == "enum":
         return _parse_type(_type["name"], collector, namespace_prefix=namespace_prefix)
     elif _type["type"] == "map":
         collector.typing.add("Dict")
@@ -107,9 +172,9 @@ def _parse_dict_type(
     elif _type["type"] in PRIMITIVE_TO_TYPE:
         return PRIMITIVE_TO_TYPE[_type["type"]]
     else:
-        raise Exception(f"Failed parsing type {_type}")
+        raise Exception(f"Failed parsing type dict: {_type}")
 
-
+        
 def _extract_default(field: SimpleField, output_type: OutputType) -> Optional[str]:
     if output_type == OutputType.DATACLASS and "default" in field:
         if isinstance(field["default"], str):
