@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Union
+from decimal import Decimal
 from tests.utils import roundtrip
 
 
@@ -7,6 +8,14 @@ from tests.utils import roundtrip
 class Inner:
     a: str
 
+
+def test_decimal():
+    @dataclass
+    class Test:
+        amount: Decimal
+
+    test = Test(Decimal("1234.5678"))
+    assert test == roundtrip(test)
 
 def test_primitives():
     @dataclass

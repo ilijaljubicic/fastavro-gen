@@ -5,3 +5,4 @@ import fastavro_gen.from_dict as from_dict
 generate = gen.read_schemas_and_generate_classes
 asdict = as_dict
 fromdict = from_dict.fromdict
+

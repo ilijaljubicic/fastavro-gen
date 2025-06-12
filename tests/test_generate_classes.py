@@ -5,6 +5,7 @@ import os
 import sys
 from contextlib import contextmanager
 from tests.utils import roundtrip
+from decimal import Decimal
 
 
 @contextmanager
@@ -62,6 +63,9 @@ def test_weather_roundtrip(tmp_path):
                 enum="EnumA",
                 record=Record(Field1="only field"),
                 circle=None,
+                tempdec=Decimal("36.67")
+
             ),
+            tempdec= Decimal("1234.5678")
         )
         assert record == roundtrip(record)
