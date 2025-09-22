@@ -77,10 +77,7 @@ def _write_imports(
         schema_name = schema.split(".")[-1]
         data.write(f"from {path}.{fname[:-3]} import {schema_name}\n")
 
-    # 4) consolidated typing imports (minus Decimal)
-    typing_only = sorted(set(collector.typing) - {"Decimal"})
-    if typing_only:
-        data.write(f"from typing import {', '.join(typing_only)}\n")
+    # Note: typing imports are already handled above in the per-module loop
         
         
 def _parse_type(
