@@ -81,7 +81,87 @@ Dataclasses allow for easy declaration of python classes.
 :heavy_plus_sign:Easy to transform to dictionaries with the provided `fastavro_gen.asdict` function. It is simply a wrapper around `dataclasses.asdict`.  
 :heavy_minus_sign:Complex nested schemas means a lot of objects being created  
 :heavy_minus_sign:Extra overhead transforming messages to dictionaries  
-:heavy_minus_sign:Overhead transforming dictionaries to dataclasses using `fastavro_gen.fromdict`.  
+:heavy_minus_sign:Overhead transforming dictionaries to dataclasses using `fastavro_gen.fromdict`.
+
+
+## Logical Type Support
+
+Fastavro-gen automatically handles Avro logical types and generates appropriate Python types:
+
+| Avro Logical Type | Python Type | Import |
+|-------------------|-------------|---------|
+| `date` | `date` | `from datetime import date` |
+| `time-millis` | `time` | `from datetime import time` |
+| `time-micros` | `time` | `from datetime import time` |
+| `timestamp-millis` | `datetime` | `from datetime import datetime` |
+| `timestamp-micros` | `datetime` | `from datetime import datetime` |
+| `local-timestamp-millis` | `datetime` | `from datetime import datetime` |
+| `local-timestamp-micros` | `datetime` | `from datetime import datetime` |
+| `decimal` | `Decimal` | `from decimal import Decimal` |
+
+### Example
+
+Given this Avro schema with logical types:
+```json
+{
+    "namespace": "example.avro",
+    "type": "record",
+    "name": "Event",
+    "fields": [
+        {"name": "name", "type": "string"},
+        {
+            "name": "created_at",
+            "type": {
+                "type": "long",
+                "logicalType": "timestamp-millis"
+            }
+        },
+        {
+            "name": "event_date",
+            "type": {
+                "type": "int",
+                "logicalType": "date"
+            }
+        }
+    ]
+}
+```
+
+Fastavro-gen will generate:
+```python
+from datetime import datetime, date
+from dataclasses import dataclass
+
+@dataclass
+class Event:
+    name: str
+    created_at: datetime    # Not int!
+    event_date: date        # Not int!
+```
+
+### Serialization Compatibility
+
+The generated classes work seamlessly with both fastavro and BigQuery JSON serialization:
+
+- **fastavro**: Automatically converts datetime objects to integers based on logical types during serialization
+- **to_bq_json()**: Converts datetime objects to ISO string format for BigQuery ingestion
+
+```python
+from datetime import datetime, date
+
+# Create instance with Python types
+event = Event(
+    name="User Login",
+    created_at=datetime.now(),
+    event_date=date.today()
+)
+
+# fastavro serialization - converts to int automatically
+avro_data = asdict(event)  # created_at becomes milliseconds since epoch
+
+# BigQuery JSON - converts to ISO strings
+bq_data = event.to_bq_json()  # created_at becomes "2023-07-10T14:40:00+00:00"
+```
 
 
 ## Usage
