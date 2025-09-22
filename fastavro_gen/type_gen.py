@@ -154,7 +154,7 @@ def _parse_dict_type(
     namespace_prefix: str = "",
 ) -> str:
     lt = _type.get("logicalType")
-    if _type["type"] == "bytes" and lt in LOGICAL_TYPE_MAP:
+    if lt in LOGICAL_TYPE_MAP:
         name, _, _ = LOGICAL_TYPE_MAP[lt]
         collector.typing.add(name)
         return name
